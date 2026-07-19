@@ -54,21 +54,25 @@ void KdzHeader::parse_v2_header(const std::vector<char>& data) {
     this->version = 2;
     const char* p = data.data() + 8;
 
-    KDZ_V2RECORD_FMT dz_rec, dll_rec, dylib_rec, unknown_rec;
+    KDZ_V2RECORD_FMT dz_rec, dll_rec, dylib_rec{}, unknown_rec{};
     std::memcpy(&dz_rec, p, sizeof(KDZ_V2RECORD_FMT));
     p += sizeof(KDZ_V2RECORD_FMT);
     std::memcpy(&dll_rec, p, sizeof(KDZ_V2RECORD_FMT));
     p += sizeof(KDZ_V2RECORD_FMT);
     
     uint8_t marker = *reinterpret_cast<const uint8_t*>(p);
-    if (marker != 0x00 && marker != 0x03) {
+    if (marker != 0x00 && marker != 0x01 && marker != 0x03) {
          throw std::runtime_error("Unexpected byte after DLL record: 0x" + bytes_to_hex(&marker, 1));
     }
     p += 1;
 
-    std::memcpy(&dylib_rec, p, sizeof(KDZ_V2RECORD_FMT));
-    p += sizeof(KDZ_V2RECORD_FMT);
-    std::memcpy(&unknown_rec, p + 272, sizeof(KDZ_V2RECORD_FMT)); // Offset 825 in header
+    if (marker == 0x01) {
+        // DLL-only variant: no dylib or unknown records follow
+    } else {
+        std::memcpy(&dylib_rec, p, sizeof(KDZ_V2RECORD_FMT));
+        p += sizeof(KDZ_V2RECORD_FMT);
+        std::memcpy(&unknown_rec, p + 272, sizeof(KDZ_V2RECORD_FMT)); // Offset 825 in header
+    }
 
     KDZ_V2RECORD_FMT all_recs[] = {dz_rec, dll_rec, dylib_rec, unknown_rec};
     for (const auto& rec : all_recs) {
@@ -93,19 +97,21 @@ void KdzHeader::parse_v3_header(const std::vector<char>& data) {
     this->version = 3;
     const char* p = data.data() + 8;
 
-    KDZ_V2RECORD_FMT dz_rec, dll_rec, dylib_rec, unknown_rec;
+    KDZ_V2RECORD_FMT dz_rec, dll_rec, dylib_rec{}, unknown_rec{};
     std::memcpy(&dz_rec, p, sizeof(KDZ_V2RECORD_FMT)); p += sizeof(KDZ_V2RECORD_FMT);
     std::memcpy(&dll_rec, p, sizeof(KDZ_V2RECORD_FMT)); p += sizeof(KDZ_V2RECORD_FMT);
 
     uint8_t marker = *reinterpret_cast<const uint8_t*>(p);
-    if (marker != 0x00 && marker != 0x03) {
+    if (marker != 0x00 && marker != 0x01 && marker != 0x03) {
          throw std::runtime_error("Unexpected byte after DLL record: 0x" + bytes_to_hex(&marker, 1));
     }
     p += 1;
 
-    std::memcpy(&dylib_rec, p, sizeof(KDZ_V2RECORD_FMT)); p += sizeof(KDZ_V2RECORD_FMT);
-    // V3 has a different layout for the unknown_record vs v2
-    std::memcpy(&unknown_rec, data.data() + 825, sizeof(KDZ_V2RECORD_FMT));
+    if (marker != 0x01) {
+        std::memcpy(&dylib_rec, p, sizeof(KDZ_V2RECORD_FMT)); p += sizeof(KDZ_V2RECORD_FMT);
+        // V3 has a different layout for the unknown_record vs v2
+        std::memcpy(&unknown_rec, data.data() + 825, sizeof(KDZ_V2RECORD_FMT));
+    }
 
     KDZ_V2RECORD_FMT all_recs[] = {dz_rec, dll_rec, dylib_rec, unknown_rec};
     for (const auto& rec : all_recs) {
